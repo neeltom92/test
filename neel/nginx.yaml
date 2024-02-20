@@ -1,35 +1,63 @@
----
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
 metadata:
-  name: nginx-deployment
-  namespace: learn
+  name: nginx
 spec:
+  replicas: 1
+  strategy:
+    canary:
+      canaryService: nginx-canary
+      stableService: nginx-stable
+      trafficRouting:
+        nginx:
+          stableIngress: rollouts-demo-stable
+      steps:
+        - setWeight: 5
+        - pause: {}
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
-      app.kubernetes.io/name: nginx-app
-  replicas: 1 # tells deployment to run 2 pods matching the template
+      app: nginx
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: nginx-app
+        app: nginx
     spec:
       containers:
-      - name: nginx
-        image: nginx:1.14.2
-        ports:
-        - containerPort: 80
+        - name: nginx
+          image: nginx:1.14.2
+          ports:
+            - name: http
+              containerPort: 80
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: nginx-service
-  namespace: learn
+  name: nginx-canary
 spec:
   ports:
     - port: 80
-      targetPort: 80
-  type: ClusterIP
+      targetPort: http
+      protocol: TCP
+      name: http
   selector:
-    app.kubernetes.io/name: nginx-app
+    app: nginx
+    # This selector will be updated with the pod-template-hash of the canary ReplicaSet. e.g.:
+    # rollouts-pod-template-hash: 7bf84f9696
 
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-stable
+spec:
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: nginx
+    # This selector will be updated with the pod-template-hash of the stable ReplicaSet. e.g.:
+    # rollouts-pod-template-hash: 789746c88d
